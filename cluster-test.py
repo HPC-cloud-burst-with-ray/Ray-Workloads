@@ -8,8 +8,8 @@ import ray
 # ray.init(address='192.168.20.203:6379')     # do Ray
 # ray.init(address='ray://192.168.1.3:10001') 
 # ray.init(address=auto) 
-
-ray.init(address="192.168.20.203:6379", _redis_password="YXHUILOPQ7")
+# ray.init(address="192.168.20.203:6379", _redis_password="YXHUILOPQ7")
+ray.init()
 
 # import time
 
