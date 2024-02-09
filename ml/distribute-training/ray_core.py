@@ -32,8 +32,8 @@ NUM_MODELS = 20
 # X_test_ref = ray.put(X_test)
 # y_train_ref = ray.put(y_train)
 # y_test_ref = ray.put(y_test)
-
-
+ray.init()
+dir ="~/scikit_learn_data"
 # Implement function to train and score model
 @ray.remote
 def train_and_score_model(
@@ -42,8 +42,9 @@ def train_and_score_model(
     # train_labels_ref: pd.Series,
     # test_labels_ref: pd.Series,
     n_estimators: int,
+    working_dir: str,
 ) -> tuple[int, float]:
-    X, y = fetch_california_housing(data_home="~/scikit_learn_data",download_if_missing=False,return_X_y=True, as_frame=True)
+    X, y = fetch_california_housing(data_home=working_dir,download_if_missing=False,return_X_y=True, as_frame=True)
 
     train_set_ref, test_set_ref, train_labels_ref, test_labels_ref = train_test_split(
     X, y, test_size=0.2, random_state=201
@@ -72,6 +73,7 @@ def run_parallel(n_models: int) -> list[tuple[int, float]]:
             # train_labels_ref=y_train_ref,
             # test_labels_ref=y_test_ref,
             n_estimators=8 + 4 * j,
+            working_dir=dir
         )
         for j in range(n_models)
     ]
