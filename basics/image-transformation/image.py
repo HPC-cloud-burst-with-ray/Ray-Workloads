@@ -24,7 +24,7 @@ SERIAL_BATCH_TIMES = []
 DISTRIBUTED_BATCH_TIMES = []
 # Define a Ray task to transform, augment and do some compute intensive tasks on an image
 @ray.remote
-def augment_image_distributed(image_ref: object, fetch_image,work_dir) -> List[object]:
+def augment_image_distributed(image_ref: object, fetch_image,working_dir) -> List[object]:
     img_ref = Image.open(image_ref)
     return t_utils.transform_image(img_ref, fetch_image=fetch_image)
 
@@ -32,7 +32,7 @@ def augment_image_distributed(image_ref: object, fetch_image,work_dir) -> List[o
 # def run_distributed(img_list_refs:List[object]) ->  List[Tuple[int, float]]:
 #     return ray.get([augment_image_distributed.remote(img, False,work_dir=DATA_DIR) for img in tqdm.tqdm(img_list_refs)])
 def run_distributed(img_list_refs:List[object]) ->  List[Tuple[int, float]]:
-    return ray.get([augment_image_distributed.remote(img, False,work_dir=img) for img in img_list_refs])
+    return ray.get([augment_image_distributed.remote(img, False,working_dir=img) for img in img_list_refs])
 
 # Check if dir exists. If so ignore download.
 # Just assume we have done from a prior run
