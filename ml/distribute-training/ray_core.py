@@ -18,7 +18,7 @@ NUM_MODELS = 20
 
 
 # Prepare dataset
-X, y = fetch_california_housing(data_home="~/scikit_learn_data",download_if_missing=False,return_X_y=True, as_frame=True)
+# X, y = fetch_california_housing(data_home="~/scikit_learn_data",download_if_missing=False,return_X_y=True, as_frame=True)
 
 
 
