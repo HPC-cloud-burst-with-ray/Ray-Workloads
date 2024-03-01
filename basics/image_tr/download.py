@@ -1,20 +1,9 @@
+
+from pathlib import Path
 import os
-import random
-from typing import List, Tuple
-
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 import requests
-import torch
-from PIL import Image, ImageFilter
-from torchvision import transforms as T
-import ray
 
-#
-# borrowed URLs ideas and heavily modified from https://analyticsindiamag.com/how-to-run-python-code-concurrently-using-multithreading/
-#
-
+DATA_DIR = Path(os.getcwd() + "/task_images")
 URLS = [
     "https://images.pexels.com/photos/305821/pexels-photo-305821.jpeg",
     "https://images.pexels.com/photos/509922/pexels-photo-509922.jpeg",
@@ -67,7 +56,6 @@ URLS = [
     "https://images.pexels.com/photos/116675/pexels-photo-116675.jpeg",
     "https://images.pexels.com/photos/3586966/pexels-photo-3586966.jpeg",
     "https://images.pexels.com/photos/313782/pexels-photo-313782.jpeg",
-    "https://www.nasa.gov/centers/stennis/images/content/702979main_SSC-2012-01487.jpg",
     "https://live.staticflickr.com/2443/3984080835_71b0426844_b.jpg",
     "https://www.aero.jaxa.jp/eng/facilities/aeroengine/images/th_aeroengine05.jpg",
     "https://images.pexels.com/photos/370717/pexels-photo-370717.jpeg",
@@ -119,48 +107,6 @@ URLS = [
     "https://images.pexels.com/photos/33041/antelope-canyon-lower-canyon-arizona.jpg",
     "https://images.pexels.com/photos/1004665/pexels-photo-1004665.jpeg",
 ]
-THUMB_SIZE = (64, 64)
-
-
-def extract_times(lst: Tuple[int, float]) -> List[float]:
-    """
-    Given a list of Tuples[batch_size, execution_time] extract the latter
-    """
-    times = [t[1] for t in lst]
-    return times
-
-
-def plot_times(batches: List[int], s_lst: List[float], d_lst: List[float]) -> None:
-    """
-    Plot the execution times for serail vs distributed for each respective batch size of images
-    """
-    s_times = extract_times(s_lst)
-    d_times = extract_times(d_lst)
-    data = {"batches": batches, "serial": s_times, "distributed": d_times}
-
-    df = pd.DataFrame(data)
-    df.plot(x="batches", y=["serial", "distributed"], kind="bar")
-    plt.ylabel("Times in sec", fontsize=12)
-    plt.xlabel("Number of Batches of Images", fontsize=12)
-    plt.grid(False)
-    plt.show()
-
-
-def display_random_images(image_list: List[str], n: int = 3) -> None:
-    """
-    Display a grid of images, default 3 of images we want to process
-    """
-    random_samples_idx = random.sample(range(len(image_list)), k=n)
-    plt.figure(figsize=(16, 8))
-    for i, targ_sample in enumerate(random_samples_idx):
-        plt.subplot(1, n, i + 1)
-        img = Image.open(image_list[targ_sample])
-        img_as_array = np.asarray(img)
-        plt.imshow(img_as_array)
-        title = f"\nshape: {img.size}"
-        plt.axis("off")
-        plt.title(title)
-    plt.show()
 
 
 def download_images(url: str, data_dir: str) -> None:
@@ -172,56 +118,10 @@ def download_images(url: str, data_dir: str) -> None:
     img_name = f"{data_dir}/{img_name}.jpg"
     with open(img_name, "wb+") as f:
         f.write(img_data)
-        
-def insert_into_object_store(img_name:str):
-    """
-    Insert the image into the object store and return its object reference
-    """
-    import ray
-    
-    img = Image.open(img_name)
-    img_ref = ray.put(img)
-    return img_ref
 
 
-def transform_image(img_ref:object, fetch_image=True, verbose=False):
-    """
-    This is a deliberate compute intensive image transfromation and tensor operation
-    to simulate a compute intensive image processing
-    """
-    import ray
-    
-    # Only fetch the image from the object store if called serially.
-    if fetch_image:
-        img = ray.get(img_ref)
-    else:
-        img = img_ref
-    before_shape = img.size
-
-    # Make the image blur with specified intensify
-    # Use torchvision transformation to augment the image
-    img = img.filter(ImageFilter.GaussianBlur(radius=20))
-    augmentor = T.TrivialAugmentWide(num_magnitude_bins=31)
-    img = augmentor(img)
-
-    # Convert image to tensor and transpose
-    tensor = torch.tensor(np.asarray(img))
-    t_tensor = torch.transpose(tensor, 0, 1)
-
-    # compute intensive operations on tensors
-    random.seed(42)
-    for _ in range(3):
-        tensor.pow(3).sum()
-        t_tensor.pow(3).sum()
-        torch.mul(tensor, random.randint(2, 10))
-        torch.mul(t_tensor, random.randint(2, 10))
-        torch.mul(tensor, tensor)
-        torch.mul(t_tensor, t_tensor)
-
-    # Resize to a thumbnail
-    img.thumbnail(THUMB_SIZE)
-    after_shape = img.size
-    if verbose:
-        print(f"augmented: shape:{img.size}| image tensor shape:{tensor.size()} transpose shape:{t_tensor.size()}")
-
-    return before_shape, after_shape
+if not os.path.exists(DATA_DIR):
+    os.mkdir(DATA_DIR)
+    print(f"downloading images ...")
+    for url in URLS:
+        download_images(url, DATA_DIR)
