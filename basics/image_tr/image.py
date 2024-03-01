@@ -18,6 +18,9 @@ if len(sys.argv) > 1:
     if mode == "sched":
         use_scheduler = True
         print("Using scheduler")
+    else:
+        print(f"Unknown mode: {mode}. Exiting")
+        sys.exit(1)
 
 ray.init(address='auto')
 
@@ -50,7 +53,7 @@ def transform_image(img: object, fetch_image=True, verbose=False):
 
     # compute intensive operations on tensors
     random.seed(42)
-    for _ in range(3):
+    for _ in range(10):
         tensor.pow(3).sum()
         t_tensor.pow(3).sum()
         torch.mul(tensor, random.randint(2, 10))
@@ -64,24 +67,31 @@ def transform_image(img: object, fetch_image=True, verbose=False):
     if verbose:
         print(f"augmented: shape:{img.size}| image tensor shape:{tensor.size()} transpose shape:{t_tensor.size()}")
 
-    return before_shape, after_shape
+    return None
 
 
 # Define a Ray task to transform, augment and do some compute intensive tasks on an image
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=8)
 def augment_image_distributed(working_dir, complexity_score, fetch_image):
     img = Image.open(working_dir)
     return transform_image(img, fetch_image=fetch_image)
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=8)
 def augment_image_distributed_manual(image, complexity_score, fetch_image):
     
     if not os.path.exists(image):
         # remote = True
         # time.sleep(complexity_score / 100000)
         # os.system("rsync --mkpath -a ubuntu@172.31.40.126:%s %s" %(image, image))
+
+        # use repeated rsync to simulate a huge image file
+        repeat_times = 9
+        while repeat_times > 0:
+            os.system(f"rsync --mkpath -a {NODE_USER_NAME}@{DATA_IP}:{image} {image}")
+            # remove the file
+            os.system(f"rm {image}")
+            repeat_times -= 1
         os.system(f"rsync --mkpath -a {NODE_USER_NAME}@{DATA_IP}:{image} {image}")
-        time.sleep(3)
     img = Image.open(image)
     return transform_image(img, fetch_image=fetch_image)
 
