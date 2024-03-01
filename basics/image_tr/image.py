@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import logging
 import random
@@ -9,6 +10,14 @@ import numpy as np
 import ray
 import torch
 from torchvision import transforms as T
+
+use_scheduler = False
+
+if len(sys.argv) > 1:
+    mode = sys.argv[1]
+    if mode == "sched":
+        use_scheduler = True
+        print("Using scheduler")
 
 ray.init(address='auto')
 
@@ -72,7 +81,7 @@ def augment_image_distributed_manual(image, complexity_score, fetch_image):
         # time.sleep(complexity_score / 100000)
         # os.system("rsync --mkpath -a ubuntu@172.31.40.126:%s %s" %(image, image))
         os.system(f"rsync --mkpath -a {NODE_USER_NAME}@{DATA_IP}:{image} {image}")
-    
+        time.sleep(3)
     img = Image.open(image)
     return transform_image(img, fetch_image=fetch_image)
 
@@ -108,16 +117,18 @@ start = time.perf_counter()
 obj_refs = []
 for img in image_list:
     cur_complexity = os.stat(img).st_size
-    obj_refs.append(augment_image_distributed.remote(
+    if use_scheduler:
+        obj_refs.append(augment_image_distributed.remote(
         working_dir=img, # TODO: Has to explicitly do so
         complexity_score=cur_complexity, 
         fetch_image=False
-    ))
-    # obj_refs.append(augment_image_distributed_manual.remote(
-    #     img,
-    #     cur_complexity, 
-    #     False
-    # ))
+        ))
+    else:
+        obj_refs.append(augment_image_distributed_manual.remote(
+            img,
+            cur_complexity, 
+            False
+        ))
 
 distributed_results = ray.get(obj_refs)
 
