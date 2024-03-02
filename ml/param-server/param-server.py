@@ -2,36 +2,84 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision import datasets, transforms
-from filelock import FileLock
+import torchvision
+import time
+import glob
 import numpy as np
+import torch.utils.data
+from PIL import Image
+from pycocotools.coco import COCO
 
 import ray
 
 
-def get_data_loader():
-    """Safely downloads data. Returns training/validation set dataloader."""
-    mnist_transforms = transforms.Compose(
-        [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-    )
+BATCH_SIZE = 64
+MODEL = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn()
+# MODEL = torchvision.models.detection.ssdlite320_mobilenet_v3_large()
 
-    # We add FileLock here because multiple workers will want to
-    # download data, and this may cause overwrites since
-    # DataLoader is not threadsafe.
-    with FileLock(os.path.expanduser("~/data.lock")):
-        train_loader = torch.utils.data.DataLoader(
-            datasets.MNIST(
-                "~/data", train=True, download=True, transform=mnist_transforms
-            ),
-            batch_size=128,
-            shuffle=True,
-        )
-        test_loader = torch.utils.data.DataLoader(
-            datasets.MNIST("~/data", train=False, transform=mnist_transforms),
-            batch_size=128,
-            shuffle=True,
-        )
-    return train_loader, test_loader
+
+class Mydataset(torch.utils.data.Dataset):
+    def __init__(self, root, annotation, transforms=None):
+        self.root = root
+        self.transforms = transforms
+        self.coco = COCO(annotation)
+        self.ids = list(sorted(self.coco.imgs.keys()))
+
+    def __getitem__(self, index):
+        # Own coco file
+        coco = self.coco
+        # Image ID
+        img_id = self.ids[index]
+        # List: get annotation id from coco
+        ann_ids = coco.getAnnIds(imgIds=img_id)
+        # Dictionary: target coco_annotation file for an image
+        coco_annotation = coco.loadAnns(ann_ids)
+        # path for input image
+        path = coco.loadImgs(img_id)[0]['file_name']
+        # open the input image
+        img = Image.open(os.path.join(self.root, path))
+
+        # number of objects in the image
+        num_objs = len(coco_annotation)
+
+        # Bounding boxes for objects
+        # In coco format, bbox = [xmin, ymin, width, height]
+        # In pytorch, the input should be [xmin, ymin, xmax, ymax]
+        boxes = []
+        for i in range(num_objs):
+            xmin = coco_annotation[i]['bbox'][0]
+            ymin = coco_annotation[i]['bbox'][1]
+            xmax = xmin + coco_annotation[i]['bbox'][2] + 1
+            ymax = ymin + coco_annotation[i]['bbox'][3] + 1
+            boxes.append([xmin, ymin, xmax, ymax])
+        boxes = torch.as_tensor(boxes, dtype=torch.float32)
+        # Labels (In my case, I only one class: target class or background)
+        labels = torch.ones((num_objs,), dtype=torch.int64)
+        # Tensorise img_id
+        img_id = torch.tensor([img_id])
+        # Size of bbox (Rectangular)
+        areas = []
+        for i in range(num_objs):
+            areas.append(coco_annotation[i]['area'])
+        areas = torch.as_tensor(areas, dtype=torch.float32)
+        # Iscrowd
+        iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
+
+        # Annotation is in dictionary format
+        my_annotation = {}
+        my_annotation["boxes"] = boxes
+        my_annotation["labels"] = labels
+        my_annotation["image_id"] = img_id
+        my_annotation["area"] = areas
+        my_annotation["iscrowd"] = iscrowd
+
+        if self.transforms is not None:
+            img = self.transforms(img)
+
+        return img, my_annotation
+
+    def __len__(self):
+        return len(self.ids)
 
 
 def evaluate(model, test_loader):
@@ -50,130 +98,180 @@ def evaluate(model, test_loader):
             correct += (predicted == target).sum().item()
     return 100.0 * correct / total
 
-class ConvNet(nn.Module):
-    """Small ConvNet for MNIST."""
+def get_transform():
+    custom_transforms = []
+    custom_transforms.append(torchvision.transforms.ToTensor())
+    return torchvision.transforms.Compose(custom_transforms)
 
-    def __init__(self):
-        super(ConvNet, self).__init__()
-        self.conv1 = nn.Conv2d(1, 3, kernel_size=3)
-        self.fc = nn.Linear(192, 10)
+def collate_fn(batch):
+    return tuple(zip(*batch))
 
-    def forward(self, x):
-        x = F.relu(F.max_pool2d(self.conv1(x), 3))
-        x = x.view(-1, 192)
-        x = self.fc(x)
-        return F.log_softmax(x, dim=1)
-
-    def get_weights(self):
-        return {k: v.cpu() for k, v in self.state_dict().items()}
-
-    def set_weights(self, weights):
-        self.load_state_dict(weights)
-
-    def get_gradients(self):
-        grads = []
-        for p in self.parameters():
-            grad = None if p.grad is None else p.grad.data.cpu().numpy()
-            grads.append(grad)
-        return grads
-
-    def set_gradients(self, gradients):
-        for g, p in zip(gradients, self.parameters()):
-            if g is not None:
-                p.grad = torch.from_numpy(g)
-
-@ray.remote
+@ray.remote(num_cpus=1)
 class ParameterServer(object):
     def __init__(self, lr):
-        self.model = ConvNet()
+        self.model = MODEL
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=lr)
 
-    def apply_gradients(self, *gradients):
-        summed_gradients = [
-            np.stack(gradient_zip).sum(axis=0) for gradient_zip in zip(*gradients)
-        ]
+    def apply_gradients(self, gradients):
         self.optimizer.zero_grad()
-        self.model.set_gradients(summed_gradients)
+        
+        # self.model.set_gradients(summed_gradients)
+        for g, p in zip(gradients, self.model.parameters()):
+            if g is not None:
+                p.grad = torch.from_numpy(g.copy())
+
         self.optimizer.step()
-        return self.model.get_weights()
+
+        # return self.model.get_weights()
+        # return {k: v.cpu() for k, v in self.model.state_dict().items()}
 
     def get_weights(self):
-        return self.model.get_weights()
+        return {k: v.cpu() for k, v in self.model.state_dict().items()}
     
 
-@ray.remote
-class DataWorker(object):
-    def __init__(self):
-        self.model = ConvNet()
-        self.data_iterator = iter(get_data_loader()[0])
-
-    def compute_gradients(self, weights):
-        self.model.set_weights(weights)
-        try:
-            data, target = next(self.data_iterator)
-        except StopIteration:  # When the epoch ends, start a new epoch.
-            self.data_iterator = iter(get_data_loader()[0])
-            data, target = next(self.data_iterator)
-        self.model.zero_grad()
-        output = self.model(data)
-        loss = F.nll_loss(output, target)
-        loss.backward()
-        return self.model.get_gradients()
+@ray.remote(num_cpus=14)
+def train_batch(working_dir, complexity_score, server):
+    my_model = MODEL
     
+    # my_model.set_weights(ray.get(server.get_weights.remote()))
+    weights = ray.get(server.get_weights.remote())
+    my_model.load_state_dict(weights)
 
-iterations = 200
-num_workers = 5
+    del weights
 
-ray.init(ignore_reinit_error=True)
-ps = ParameterServer.remote(1e-2)
-workers = [DataWorker.remote() for i in range(num_workers)]
+    my_model.zero_grad()
 
-model = ConvNet()
-test_loader = get_data_loader()[1]
+    my_dataset = Mydataset(
+        root=working_dir,
+        annotation=working_dir+"/annotations.json",
+        transforms=get_transform()
+    )
 
-print("Running synchronous parameter server training.")
-current_weights = ps.get_weights.remote()
-for i in range(iterations):
-    gradients = [worker.compute_gradients.remote(current_weights) for worker in workers]
-    # Calculate update after all gradients are available.
-    current_weights = ps.apply_gradients.remote(*gradients)
+    data_loader = torch.utils.data.DataLoader(
+        my_dataset,
+        shuffle=True,
+        batch_size=BATCH_SIZE, # The whole folder is one batch
+        # num_workers=16,
+        collate_fn=collate_fn
+    )
 
-    if i % 10 == 0:
-        # Evaluate the current model.
-        model.set_weights(ray.get(current_weights))
-        accuracy = evaluate(model, test_loader)
-        print("Iter {}: \taccuracy is {:.1f}".format(i, accuracy))
+    for imgs, annotations in data_loader: # Only iterate once
+        loss_dict = my_model(imgs, annotations)
+        loss = sum(l for l in loss_dict.values())
+    
+    loss.backward()
 
-print("Final accuracy is {:.1f}.".format(accuracy))
-# Clean up Ray resources and processes before the next example.
-ray.shutdown()
+    grads = []
+    for p in my_model.parameters():
+        grad = None if p.grad is None else p.grad.data.cpu().numpy()
+        grads.append(grad)
+
+    server.apply_gradients.remote(grads)
+
+    print("A batch of training is done.")
+
+    # return my_model.get_gradients()
+
+@ray.remote(num_cpus=14)
+def train_batch_maunal(working_dir, complexity_score, server):
+    if not os.path.exists(working_dir):
+        remote = True
+        # time.sleep(complexity_score / 100000)
+        os.system("rsync --mkpath -r -a ubuntu@172.31.40.126:%s %s" %(working_dir, working_dir))
+    
+    my_model = MODEL
+    
+    # my_model.set_weights(ray.get(server.get_weights.remote()))
+    weights = ray.get(server.get_weights.remote())
+    my_model.load_state_dict(weights)
+
+    del weights
+
+    my_model.zero_grad()
+
+    my_dataset = Mydataset(
+        root=working_dir,
+        annotation=working_dir+"/annotations.json",
+        transforms=get_transform()
+    )
+
+    data_loader = torch.utils.data.DataLoader(
+        my_dataset,
+        shuffle=True,
+        batch_size=BATCH_SIZE, # The whole folder is one batch
+        # num_workers=16,
+        collate_fn=collate_fn
+    )
+
+    for imgs, annotations in data_loader: # Only iterate once
+        loss_dict = my_model(imgs, annotations)
+        loss = sum(l for l in loss_dict.values())
+    
+    loss.backward()
+
+    grads = []
+    for p in my_model.parameters():
+        grad = None if p.grad is None else p.grad.data.cpu().numpy()
+        grads.append(grad)
+
+    server.apply_gradients.remote(grads)
+
+    print("A batch of training is done.")
 
 
+if __name__ == "__main__":
+    ray.init(address="auto")
+    # num_workers = 2
 
-print("Running Asynchronous Parameter Server Training.")
+    DATA_DIR = os.getcwd() + "/dataset_batch/*/"
 
-ray.init(ignore_reinit_error=True)
-ps = ParameterServer.remote(1e-2)
-workers = [DataWorker.remote() for i in range(num_workers)]
-current_weights = ps.get_weights.remote()
+    data_batches = glob.glob(DATA_DIR)
 
-gradients = {}
-for worker in workers:
-    gradients[worker.compute_gradients.remote(current_weights)] = worker
+    server = ParameterServer.remote(1e-2)
 
-for i in range(iterations * num_workers):
-    ready_gradient_list, _ = ray.wait(list(gradients))
-    ready_gradient_id = ready_gradient_list[0]
-    worker = gradients.pop(ready_gradient_id)
+    print("Running Asynchronous Parameter Server Training.")
 
-    # Compute and apply gradients.
-    current_weights = ps.apply_gradients.remote(*[ready_gradient_id])
-    gradients[worker.compute_gradients.remote(current_weights)] = worker
+    training_tasks = []
 
-    if i % 10 == 0:
-        # Evaluate the current model after every 10 updates.
-        model.set_weights(ray.get(current_weights))
-        accuracy = evaluate(model, test_loader)
-        print("Iter {}: \taccuracy is {:.1f}".format(i, accuracy))
+    start_time = time.time()
 
-print("Final accuracy is {:.1f}.".format(accuracy))
+    for data in data_batches:
+        cur_complexity = os.stat(data).st_size
+        training_tasks.append(train_batch.remote(
+            working_dir=data,
+            complexity_score=cur_complexity,
+            server=server
+        ))
+
+        # training_tasks.append(train_batch_maunal.remote(
+        #     data,
+        #     cur_complexity,
+        #     server
+        # ))
+    
+    ray.get(training_tasks)
+
+    total_time = time.time() - start_time
+
+    # Test accuracy
+
+    print(total_time)
+
+    # gradients = {}
+
+    # for i in range(iterations * num_workers):
+    #     ready_gradient_list, _ = ray.wait(list(gradients))
+    #     ready_gradient_id = ready_gradient_list[0]
+    #     worker = gradients.pop(ready_gradient_id)
+
+    #     # Compute and apply gradients.
+    #     current_weights = ps.apply_gradients.remote(*[ready_gradient_id])
+    #     gradients[worker.compute_gradients.remote(current_weights)] = worker
+
+        # if i % 10 == 0:
+        #     # Evaluate the current model after every 10 updates.
+        #     model.set_weights(ray.get(current_weights))
+        #     accuracy = evaluate(model, test_loader)
+        #     print("Iter {}: \taccuracy is {:.1f}".format(i, accuracy))
+
+    # print("Final accuracy is {:.1f}.".format(accuracy))
