@@ -9,13 +9,24 @@ import numpy as np
 import torch.utils.data
 from PIL import Image
 from pycocotools.coco import COCO
-
+from const import *
 import ray
+import sys
 
-
-BATCH_SIZE = 64
+BATCH_SIZE = NUM_IMG_IN_DIR
 MODEL = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn()
 # MODEL = torchvision.models.detection.ssdlite320_mobilenet_v3_large()
+
+use_scheduler = False
+
+if len(sys.argv) > 1:
+    mode = sys.argv[1]
+    if mode == "sched":
+        use_scheduler = True
+        print("Using scheduler")
+    else:
+        print(f"Unknown mode: {mode}. Exiting")
+        sys.exit(1)
 
 
 class Mydataset(torch.utils.data.Dataset):
@@ -158,6 +169,9 @@ def train_batch(working_dir, complexity_score, server):
     for imgs, annotations in data_loader: # Only iterate once
         loss_dict = my_model(imgs, annotations)
         loss = sum(l for l in loss_dict.values())
+
+    del my_dataset
+    del data_loader
     
     loss.backward()
 
@@ -177,7 +191,7 @@ def train_batch_maunal(working_dir, complexity_score, server):
     if not os.path.exists(working_dir):
         remote = True
         # time.sleep(complexity_score / 100000)
-        os.system("rsync --mkpath -r -a ubuntu@172.31.40.126:%s %s" %(working_dir, working_dir))
+        os.system(f"rsync --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
     
     my_model = MODEL
     
@@ -206,6 +220,9 @@ def train_batch_maunal(working_dir, complexity_score, server):
     for imgs, annotations in data_loader: # Only iterate once
         loss_dict = my_model(imgs, annotations)
         loss = sum(l for l in loss_dict.values())
+
+    del my_dataset
+    del data_loader
     
     loss.backward()
 
@@ -223,8 +240,6 @@ if __name__ == "__main__":
     ray.init(address="auto")
     # num_workers = 2
 
-    DATA_DIR = os.getcwd() + "/dataset_batch/*/"
-
     data_batches = glob.glob(DATA_DIR)
 
     server = ParameterServer.remote(1e-2)
@@ -237,17 +252,19 @@ if __name__ == "__main__":
 
     for data in data_batches:
         cur_complexity = os.stat(data).st_size
-        training_tasks.append(train_batch.remote(
-            working_dir=data,
-            complexity_score=cur_complexity,
-            server=server
-        ))
-
-        # training_tasks.append(train_batch_maunal.remote(
-        #     data,
-        #     cur_complexity,
-        #     server
-        # ))
+        if use_scheduler:
+            
+            training_tasks.append(train_batch.remote(
+                working_dir=data,
+                complexity_score=cur_complexity,
+                server=server
+            ))
+        else:
+            training_tasks.append(train_batch_maunal.remote(
+                data,
+                cur_complexity,
+                server
+            ))
     
     ray.get(training_tasks)
 

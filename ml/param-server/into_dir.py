@@ -3,7 +3,11 @@ import shutil
 import os
 from collections import defaultdict
 # Specify the path to the JSON file
-json_file_path = '/home/ubuntu/train_ml/annotations/instances_train2017.json'
+from const import *
+
+json_file_path = DATASET_SOURCE_BASE + '/annotations/instances_train2017.json'
+
+
 
 # Load the JSON file
 with open(json_file_path, 'r') as f:
@@ -27,11 +31,17 @@ for j in images:
 # sorted_annotations = sorted(annotations, key=lambda x: x['id'])
 # print(sorted_annotations[0],sorted_annotations[1],sorted_annotations[-1])
 def get_directory(dir_n,file_n):
-    os.mkdir("./dataset_batch/")
+    
+    
+    if os.path.exists(DATASET_DEST_BASE  + "/dataset_batch/"):
+        os.system("rm -rf " + DATASET_DEST_BASE  + "/dataset_batch/")
+
+    os.mkdir(DATASET_DEST_BASE  + "/dataset_batch/")
+    
     for i in range(1,dir_n+1):
         data_new={}
-        os.mkdir("./dataset_batch/"+str(i))
-        dir_num="./dataset_batch/"+str(i)+'/'
+        os.mkdir(DATASET_DEST_BASE + "/dataset_batch/"+str(i))
+        dir_num=DATASET_DEST_BASE  + "/dataset_batch/"+str(i)+'/'
         new_annotations=[]
         new_images=[]
         for j in range(1,file_n+1):
@@ -39,7 +49,7 @@ def get_directory(dir_n,file_n):
             
             image_id=all_images[index]
             file_name=(12-len(str(image_id)))*'0'+str(image_id)+".jpg"
-            source_file="./train2017/"+file_name
+            source_file=DATASET_SOURCE_BASE + "/train2017/"+file_name
             destination_file=dir_num+file_name
             shutil.copyfile(source_file, destination_file)
             new_annotations.extend(dic[image_id])
@@ -56,5 +66,5 @@ def get_directory(dir_n,file_n):
 
 
 # (Num of directories, Num of files in each directory)
-get_directory(5,16)
+get_directory(NUM_DIR, NUM_IMG_IN_DIR)
             

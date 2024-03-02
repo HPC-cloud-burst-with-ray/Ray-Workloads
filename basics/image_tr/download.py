@@ -1,4 +1,3 @@
-
 from pathlib import Path
 import os
 import requests
@@ -116,11 +115,11 @@ def download_images(url: str, data_dir: str) -> None:
     img_data = requests.get(url).content
     img_name = url.split("/")[4]
     img_name = f"{data_dir}/{img_name}"
-    # with open(img_name + ".jpg", "wb+") as f:
-    #     f.write(img_data)
-    for i in range(2):
-        with open(f"{img_name}-copy{i}.jpg", "wb+") as f:
-            f.write(img_data)
+    with open(img_name + ".jpg", "wb+") as f:
+        f.write(img_data)
+    # for i in range(2):
+    #     with open(f"{img_name}-copy{i}.jpg", "wb+") as f:
+    #         f.write(img_data)
 
 
 if not os.path.exists(DATA_DIR):

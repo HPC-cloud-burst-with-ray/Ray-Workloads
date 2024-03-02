@@ -53,7 +53,7 @@ def transform_image(img: object, fetch_image=True, verbose=False):
 
     # compute intensive operations on tensors
     random.seed(42)
-    for _ in range(20):
+    for _ in range(30):
         tensor.pow(3).sum()
         t_tensor.pow(3).sum()
         torch.mul(tensor, random.randint(2, 10))
@@ -71,12 +71,12 @@ def transform_image(img: object, fetch_image=True, verbose=False):
 
 
 # Define a Ray task to transform, augment and do some compute intensive tasks on an image
-@ray.remote(num_cpus=15)
+@ray.remote(num_cpus=14)
 def augment_image_distributed(working_dir, complexity_score, fetch_image):
     img = Image.open(working_dir)
     return transform_image(img, fetch_image=fetch_image)
 
-@ray.remote(num_cpus=15)
+@ray.remote(num_cpus=14)
 def augment_image_distributed_manual(image, complexity_score, fetch_image):
     
     if not os.path.exists(image):
