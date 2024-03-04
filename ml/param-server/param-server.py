@@ -13,9 +13,17 @@ from const import *
 import ray
 import sys
 
+from ray.util.scheduling_strategies import (
+    In,
+    NotIn,
+    Exists,
+    DoesNotExist,
+    NodeLabelSchedulingStrategy,
+)
+
 BATCH_SIZE = NUM_IMG_IN_DIR
-MODEL = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn()
-# MODEL = torchvision.models.detection.ssdlite320_mobilenet_v3_large()
+# MODEL = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn()
+MODEL = torchvision.models.detection.ssdlite320_mobilenet_v3_large()
 
 use_scheduler = False
 
@@ -242,7 +250,24 @@ if __name__ == "__main__":
 
     data_batches = glob.glob(DATA_DIR)
 
-    server = ParameterServer.remote(1e-2)
+    # server = ParameterServer.remote(1e-2)
+
+    head_node_ip = os.getenv("HEAD_NODE_IP", None)
+    if head_node_ip is None:
+        raise Exception("env variable HEAD_NODE_IP not set, please tell us the head node ip.")
+
+    nodes = ray.nodes()
+    node_id = None
+    for node in nodes:
+        if node["NodeManagerAddress"] == head_node_ip:
+            node_id = node["NodeID"]
+            break
+
+    server = ParameterServer.options(
+            scheduling_strategy=NodeLabelSchedulingStrategy(
+                hard={"ray.io/node_id": In(node_id)}
+            )
+        ).remote(1e-2)
 
     print("Running Asynchronous Parameter Server Training.")
 
