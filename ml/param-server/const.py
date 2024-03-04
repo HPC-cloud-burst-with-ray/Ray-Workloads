@@ -1,10 +1,10 @@
 import os
 
-NUM_DIR = 5
-NUM_IMG_IN_DIR = 20
+NUM_DIR = 50
+NUM_IMG_IN_DIR = 100
 
 # sub batch in one dir
-NUM_BATCHES_IN_DIR = 2
+NUM_BATCHES_IN_DIR = 1
 
 assert NUM_IMG_IN_DIR % NUM_BATCHES_IN_DIR == 0
 
