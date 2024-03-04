@@ -63,27 +63,6 @@ def get_directory(dir_n,file_n):
             data_new ["categories"]=categories 
             
             json.dump(data_new, f)
-        # generate sub annotations, each sub annotation contains a subset of images
-        for k in range(NUM_BATCHES_IN_DIR):
-            # each sub annotation contains a subset of images
-            start = k * BATCH_SIZE
-            end = (k + 1) * BATCH_SIZE
-            sub_images = new_images[start:end]
-            sub_annotations = []
-            for sub_image in sub_images:
-                sub_image_id = sub_image['id']
-                sub_annotations.extend(dic[sub_image_id])
-            sub_data = {
-                "licenses": licenses,
-                "info": info,
-                "images": sub_images,
-                "annotations": sub_annotations,
-                "categories": categories
-            }
-            sub_json_file_path = dir_num + f"annotations_{k}.json"
-            with open(sub_json_file_path, 'w') as f:
-                json.dump(sub_data, f)
-        print(f"Generated {NUM_BATCHES_IN_DIR} sub annotations in {dir_num}")
 
 
 # (Num of directories, Num of files in each directory)

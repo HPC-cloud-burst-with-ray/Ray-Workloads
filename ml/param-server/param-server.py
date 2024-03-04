@@ -21,7 +21,6 @@ from ray.util.scheduling_strategies import (
     NodeLabelSchedulingStrategy,
 )
 
-BATCH_SIZE = NUM_IMG_IN_DIR
 # MODEL = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn()
 MODEL = torchvision.models.detection.ssdlite320_mobilenet_v3_large()
 
@@ -41,22 +40,27 @@ class Mydataset(torch.utils.data.Dataset):
     def __init__(self, root, annotation, transforms=None):
         self.root = root
         self.transforms = transforms
+        print("the annotation is: ", annotation)
         self.coco = COCO(annotation)
         self.ids = list(sorted(self.coco.imgs.keys()))
 
     def __getitem__(self, index):
+        # print("Index: ", index)
         # Own coco file
         coco = self.coco
         # Image ID
         img_id = self.ids[index]
         # List: get annotation id from coco
         ann_ids = coco.getAnnIds(imgIds=img_id)
+        # print("ann_ids: ", ann_ids)
         # Dictionary: target coco_annotation file for an image
         coco_annotation = coco.loadAnns(ann_ids)
+        # print("coco_annotation length: ", len(coco_annotation))
         # path for input image
         path = coco.loadImgs(img_id)[0]['file_name']
         # open the input image
         img = Image.open(os.path.join(self.root, path))
+        # print("image path: ", os.path.join(self.root, path))
 
         # number of objects in the image
         num_objs = len(coco_annotation)
@@ -99,7 +103,6 @@ class Mydataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.ids)
-
 
 def evaluate(model, test_loader):
     """Evaluates the accuracy of the model on a validation dataset."""
@@ -148,100 +151,227 @@ class ParameterServer(object):
         return {k: v.cpu() for k, v in self.model.state_dict().items()}
     
 
+# @ray.remote(num_cpus=14)
+# def train_batch(working_dir, complexity_score, server):
+#     my_model = MODEL
+    
+#     # my_model.set_weights(ray.get(server.get_weights.remote()))
+#     weights = ray.get(server.get_weights.remote())
+#     my_model.load_state_dict(weights)
+
+#     del weights
+
+#     my_model.zero_grad()
+
+#     my_dataset = Mydataset(
+#         root=working_dir,
+#         annotation=working_dir+"/annotations.json",
+#         transforms=get_transform()
+#     )
+
+#     data_loader = torch.utils.data.DataLoader(
+#         my_dataset,
+#         shuffle=True,
+#         batch_size=BATCH_SIZE, # The whole folder is one batch
+#         # num_workers=16,
+#         collate_fn=collate_fn
+#     )
+
+#     for imgs, annotations in data_loader: # Only iterate once
+#         loss_dict = my_model(imgs, annotations)
+#         loss = sum(l for l in loss_dict.values())
+
+#     del my_dataset
+#     del data_loader
+    
+#     loss.backward()
+
+#     grads = []
+#     for p in my_model.parameters():
+#         grad = None if p.grad is None else p.grad.data.cpu().numpy()
+#         grads.append(grad)
+
+#     server.apply_gradients.remote(grads)
+
+#     print("A batch of training is done.")
+
+#     # return my_model.get_gradients()
+
 @ray.remote(num_cpus=14)
-def train_batch(working_dir, complexity_score, server):
-    my_model = MODEL
+class TrainBatch:
+    def __init__(self, num_batch_in_dir):
+        self.num_batch_in_dir = num_batch_in_dir
+        self.cur_batch_idx = 0
+
+    def train_all_batch(self, working_dir, complexity_score, server):
+        for i in range(self.num_batch_in_dir):
+            self.train_batch(working_dir, complexity_score, server)
+
+    def train_batch(self, working_dir, complexity_score, server):
+        my_model = MODEL
+        
+        # my_model.set_weights(ray.get(server.get_weights.remote()))
+        weights = ray.get(server.get_weights.remote())
+        my_model.load_state_dict(weights)
+
+        del weights
+
+        my_model.zero_grad()
+
+        assert self.cur_batch_idx < self.num_batch_in_dir
+
+        my_dataset = Mydataset(
+            root=working_dir,
+            annotation=working_dir+ f"/annotations_{self.cur_batch_idx}.json",
+            transforms=get_transform()
+        )
+
+        print(f"Training on {working_dir} batch {self.cur_batch_idx}")
+        self.cur_batch_idx += 1
+
+        data_loader = torch.utils.data.DataLoader(
+            my_dataset,
+            shuffle=True,
+            batch_size=BATCH_SIZE,
+            # num_workers=16,
+            collate_fn=collate_fn
+        )
+
+        # print("start to iterate data_loader")
+
+        for imgs, annotations in data_loader: # Only iterate once
+            loss_dict = my_model(imgs, annotations)
+            loss = sum(l for l in loss_dict.values())
+
+        del my_dataset
+        del data_loader
+        
+        loss.backward()
+
+        grads = []
+        for p in my_model.parameters():
+            grad = None if p.grad is None else p.grad.data.cpu().numpy()
+            grads.append(grad)
+
+        server.apply_gradients.remote(grads)
+
+        print("A batch of training is done.")
+
+
+# @ray.remote(num_cpus=14)
+# def train_batch_maunal(working_dir, complexity_score, server):
+#     if not os.path.exists(working_dir):
+#         remote = True
+#         # time.sleep(complexity_score / 100000)
+#         os.system(f"rsync --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
     
-    # my_model.set_weights(ray.get(server.get_weights.remote()))
-    weights = ray.get(server.get_weights.remote())
-    my_model.load_state_dict(weights)
-
-    del weights
-
-    my_model.zero_grad()
-
-    my_dataset = Mydataset(
-        root=working_dir,
-        annotation=working_dir+"/annotations.json",
-        transforms=get_transform()
-    )
-
-    data_loader = torch.utils.data.DataLoader(
-        my_dataset,
-        shuffle=True,
-        batch_size=BATCH_SIZE, # The whole folder is one batch
-        # num_workers=16,
-        collate_fn=collate_fn
-    )
-
-    for imgs, annotations in data_loader: # Only iterate once
-        loss_dict = my_model(imgs, annotations)
-        loss = sum(l for l in loss_dict.values())
-
-    del my_dataset
-    del data_loader
+#     my_model = MODEL
     
-    loss.backward()
+#     # my_model.set_weights(ray.get(server.get_weights.remote()))
+#     weights = ray.get(server.get_weights.remote())
+#     my_model.load_state_dict(weights)
 
-    grads = []
-    for p in my_model.parameters():
-        grad = None if p.grad is None else p.grad.data.cpu().numpy()
-        grads.append(grad)
+#     del weights
 
-    server.apply_gradients.remote(grads)
+#     my_model.zero_grad()
 
-    print("A batch of training is done.")
+#     my_dataset = Mydataset(
+#         root=working_dir,
+#         annotation=working_dir+"/annotations.json",
+#         transforms=get_transform()
+#     )
 
-    # return my_model.get_gradients()
+#     data_loader = torch.utils.data.DataLoader(
+#         my_dataset,
+#         shuffle=True,
+#         batch_size=BATCH_SIZE, # The whole folder is one batch
+#         # num_workers=16,
+#         collate_fn=collate_fn
+#     )
+
+#     for imgs, annotations in data_loader: # Only iterate once
+#         loss_dict = my_model(imgs, annotations)
+#         loss = sum(l for l in loss_dict.values())
+
+#     del my_dataset
+#     del data_loader
+    
+#     loss.backward()
+
+#     grads = []
+#     for p in my_model.parameters():
+#         grad = None if p.grad is None else p.grad.data.cpu().numpy()
+#         grads.append(grad)
+
+#     server.apply_gradients.remote(grads)
+
+#     print("A batch of training is done.")
 
 @ray.remote(num_cpus=14)
-def train_batch_maunal(working_dir, complexity_score, server):
-    if not os.path.exists(working_dir):
-        remote = True
-        # time.sleep(complexity_score / 100000)
-        os.system(f"rsync --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
+class TrainBatchManual:
+    def __init__(self, num_batch_in_dir):
+        self.num_batch_in_dir = num_batch_in_dir
+        self.cur_batch_idx = 0
+
+    def train_all_batch_manual(self, working_dir, complexity_score, server):
+        if not os.path.exists(working_dir):
+            remote = True
+            # time.sleep(complexity_score / 100000)
+            os.system(f"rsync --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
+
+        for i in range(self.num_batch_in_dir):
+            self.train_batch_maunal(working_dir, complexity_score, server)
+
+    def train_batch_maunal(self, working_dir, complexity_score, server):
     
-    my_model = MODEL
-    
-    # my_model.set_weights(ray.get(server.get_weights.remote()))
-    weights = ray.get(server.get_weights.remote())
-    my_model.load_state_dict(weights)
+        my_model = MODEL
+        
+        # my_model.set_weights(ray.get(server.get_weights.remote()))
+        weights = ray.get(server.get_weights.remote())
+        my_model.load_state_dict(weights)
 
-    del weights
+        del weights
 
-    my_model.zero_grad()
+        my_model.zero_grad()
 
-    my_dataset = Mydataset(
-        root=working_dir,
-        annotation=working_dir+"/annotations.json",
-        transforms=get_transform()
-    )
+        assert self.cur_batch_idx < self.num_batch_in_dir
 
-    data_loader = torch.utils.data.DataLoader(
-        my_dataset,
-        shuffle=True,
-        batch_size=BATCH_SIZE, # The whole folder is one batch
-        # num_workers=16,
-        collate_fn=collate_fn
-    )
+        my_dataset = Mydataset(
+            root=working_dir,
+            annotation=working_dir+f"/annotations_{self.cur_batch_idx}.json",
+            transforms=get_transform()
+        )
 
-    for imgs, annotations in data_loader: # Only iterate once
-        loss_dict = my_model(imgs, annotations)
-        loss = sum(l for l in loss_dict.values())
+        print(f"Training on {working_dir} batch {self.cur_batch_idx}")
+        self.cur_batch_idx += 1
 
-    del my_dataset
-    del data_loader
-    
-    loss.backward()
+        data_loader = torch.utils.data.DataLoader(
+            my_dataset,
+            shuffle=True,
+            batch_size=BATCH_SIZE, # The whole folder is one batch
+            # num_workers=16,
+            collate_fn=collate_fn
+        )
 
-    grads = []
-    for p in my_model.parameters():
-        grad = None if p.grad is None else p.grad.data.cpu().numpy()
-        grads.append(grad)
+        for imgs, annotations in data_loader: # Only iterate once
+            # print(imgs[1])
+            # print(annotations)
+            loss_dict = my_model(imgs, annotations)
+            loss = sum(l for l in loss_dict.values())
 
-    server.apply_gradients.remote(grads)
+        del my_dataset
+        del data_loader
+        
+        loss.backward()
 
-    print("A batch of training is done.")
+        grads = []
+        for p in my_model.parameters():
+            grad = None if p.grad is None else p.grad.data.cpu().numpy()
+            grads.append(grad)
+
+        server.apply_gradients.remote(grads)
+
+        print("A batch of training is done.")
 
 
 if __name__ == "__main__":
@@ -278,14 +408,15 @@ if __name__ == "__main__":
     for data in data_batches:
         cur_complexity = os.stat(data).st_size
         if use_scheduler:
-            
-            training_tasks.append(train_batch.remote(
+            train_actor = TrainBatch.remote(NUM_BATCHES_IN_DIR)
+            training_tasks.append(train_actor.train_all_batch.remote(
                 working_dir=data,
                 complexity_score=cur_complexity,
                 server=server
             ))
         else:
-            training_tasks.append(train_batch_maunal.remote(
+            train_actor = TrainBatchManual.remote(NUM_BATCHES_IN_DIR)
+            training_tasks.append(train_actor.train_all_batch_manual.remote(
                 data,
                 cur_complexity,
                 server
