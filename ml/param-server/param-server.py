@@ -42,6 +42,7 @@ class Mydataset(torch.utils.data.Dataset):
         self.transforms = transforms
         print("the annotation is: ", annotation)
         self.coco = COCO(annotation)
+
         self.ids = list(sorted(self.coco.imgs.keys()))
 
     def __getitem__(self, index):
@@ -165,7 +166,7 @@ class ParameterServer(object):
 
 #     my_dataset = Mydataset(
 #         root=working_dir,
-#         annotation=working_dir+"/annotations.json",
+#         annotation=working_dir+"annotations.json",
 #         transforms=get_transform()
 #     )
 
@@ -198,18 +199,14 @@ class ParameterServer(object):
 #     # return my_model.get_gradients()
 
 @ray.remote(num_cpus=14)
-class TrainBatch:
-    def __init__(self, num_batch_in_dir):
-        self.num_batch_in_dir = num_batch_in_dir
-        self.cur_batch_idx = 0
+def train_batch(working_dir, complexity_score, server):
 
-    def train_all_batch(self, working_dir, complexity_score, server):
-        for i in range(self.num_batch_in_dir):
-            self.train_batch(working_dir, complexity_score, server)
+    my_model = MODEL
 
-    def train_batch(self, working_dir, complexity_score, server):
-        my_model = MODEL
-        
+    num_batch_in_dir = NUM_BATCHES_IN_DIR
+
+    for cur_batch_idx in range(num_batch_in_dir):
+
         # my_model.set_weights(ray.get(server.get_weights.remote()))
         weights = ray.get(server.get_weights.remote())
         my_model.load_state_dict(weights)
@@ -218,16 +215,16 @@ class TrainBatch:
 
         my_model.zero_grad()
 
-        assert self.cur_batch_idx < self.num_batch_in_dir
+        assert cur_batch_idx < num_batch_in_dir
 
         my_dataset = Mydataset(
             root=working_dir,
-            annotation=working_dir+ f"/annotations_{self.cur_batch_idx}.json",
+            annotation=working_dir+ f"annotations_{cur_batch_idx}.json",
             transforms=get_transform()
         )
 
-        print(f"Training on {working_dir} batch {self.cur_batch_idx}")
-        self.cur_batch_idx += 1
+        print(f"Training on {working_dir} batch {cur_batch_idx}")
+        cur_batch_idx += 1
 
         data_loader = torch.utils.data.DataLoader(
             my_dataset,
@@ -259,7 +256,7 @@ class TrainBatch:
 
 
 # @ray.remote(num_cpus=14)
-# def train_batch_maunal(working_dir, complexity_score, server):
+# def train_batch_manual(working_dir, complexity_score, server):
 #     if not os.path.exists(working_dir):
 #         remote = True
 #         # time.sleep(complexity_score / 100000)
@@ -277,7 +274,7 @@ class TrainBatch:
 
 #     my_dataset = Mydataset(
 #         root=working_dir,
-#         annotation=working_dir+"/annotations.json",
+#         annotation=working_dir+"annotations.json",
 #         transforms=get_transform()
 #     )
 
@@ -308,24 +305,17 @@ class TrainBatch:
 #     print("A batch of training is done.")
 
 @ray.remote(num_cpus=14)
-class TrainBatchManual:
-    def __init__(self, num_batch_in_dir):
-        self.num_batch_in_dir = num_batch_in_dir
-        self.cur_batch_idx = 0
+def train_batch_manual(working_dir, complexity_score, server):
+    if not os.path.exists(working_dir):
+        remote = True
+        # time.sleep(complexity_score / 100000)
+        os.system(f"rsync --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
 
-    def train_all_batch_manual(self, working_dir, complexity_score, server):
-        if not os.path.exists(working_dir):
-            remote = True
-            # time.sleep(complexity_score / 100000)
-            os.system(f"rsync --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
+    my_model = MODEL
 
-        for i in range(self.num_batch_in_dir):
-            self.train_batch_maunal(working_dir, complexity_score, server)
+    num_batch_in_dir = NUM_BATCHES_IN_DIR
 
-    def train_batch_maunal(self, working_dir, complexity_score, server):
-    
-        my_model = MODEL
-        
+    for cur_batch_idx in range(num_batch_in_dir):
         # my_model.set_weights(ray.get(server.get_weights.remote()))
         weights = ray.get(server.get_weights.remote())
         my_model.load_state_dict(weights)
@@ -334,16 +324,14 @@ class TrainBatchManual:
 
         my_model.zero_grad()
 
-        assert self.cur_batch_idx < self.num_batch_in_dir
-
         my_dataset = Mydataset(
             root=working_dir,
-            annotation=working_dir+f"/annotations_{self.cur_batch_idx}.json",
+            annotation=working_dir+f"annotations_{cur_batch_idx}.json",
             transforms=get_transform()
         )
 
-        print(f"Training on {working_dir} batch {self.cur_batch_idx}")
-        self.cur_batch_idx += 1
+        print(f"Training on {working_dir} batch {cur_batch_idx}")
+        cur_batch_idx += 1
 
         data_loader = torch.utils.data.DataLoader(
             my_dataset,
@@ -408,15 +396,13 @@ if __name__ == "__main__":
     for data in data_batches:
         cur_complexity = os.stat(data).st_size
         if use_scheduler:
-            train_actor = TrainBatch.remote(NUM_BATCHES_IN_DIR)
-            training_tasks.append(train_actor.train_all_batch.remote(
+            training_tasks.append(train_batch.remote(
                 working_dir=data,
                 complexity_score=cur_complexity,
                 server=server
             ))
         else:
-            train_actor = TrainBatchManual.remote(NUM_BATCHES_IN_DIR)
-            training_tasks.append(train_actor.train_all_batch_manual.remote(
+            training_tasks.append(train_batch_manual.remote(
                 data,
                 cur_complexity,
                 server
