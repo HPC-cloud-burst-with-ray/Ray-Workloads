@@ -1,7 +1,7 @@
 import os
 
-NUM_DIR = 50
-NUM_IMG_IN_DIR = 100
+NUM_DIR = 10
+NUM_IMG_IN_DIR = 20
 
 # sub batch in one dir
 NUM_BATCHES_IN_DIR = 1
