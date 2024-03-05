@@ -2,3 +2,4 @@
 train2017/*
 *.zip
 dataset_batch/*
+dataset_batch_s3/*

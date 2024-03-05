@@ -12,6 +12,7 @@ from pycocotools.coco import COCO
 from const import *
 import ray
 import sys
+import boto3
 
 from ray.util.scheduling_strategies import (
     In,
@@ -207,7 +208,7 @@ class ParameterServer(object):
 #     # return my_model.get_gradients()
 
 @ray.remote(num_cpus=14)
-def train_batch(working_dir, complexity_score, server):
+def train_batch(working_dir, complexity_score, server, s3=False, bucket_name="", object_key=""):
 
     my_model = MODEL
 
@@ -369,12 +370,34 @@ def train_batch_manual(working_dir, complexity_score, server):
 
         print("A batch of training is done.")
 
+def get_s3_size(bucket_name,object_key):
+    # Initialize the S3 client
+    s3 = boto3.client('s3')
+    s3_r=boto3.resource('s3')
+
+    total_size=0
+    bucket = s3_r.Bucket(bucket_name)
+    for obj in bucket.objects.filter(Prefix=object_key):
+
+        # Get the object metadata
+        try:
+            response = s3.head_object(Bucket=bucket_name, Key=obj.key)
+    
+            # Extract and print the object size
+            object_size = response['ContentLength']
+            total_size+=object_size
+            # print("correct object",obj.key)
+        except:
+            print("wrong object",obj.key)
+    print("Total size:", total_size, "bytes")
+    return total_size
+
 
 if __name__ == "__main__":
     ray.init(address="auto")
     # num_workers = 2
 
-    data_batches = glob.glob(DATA_DIR)
+    # data_batches = glob.glob(DATA_DIR)
 
     # server = ParameterServer.remote(1e-2)
 
@@ -401,17 +424,24 @@ if __name__ == "__main__":
 
     start_time = time.time()
 
-    for data in data_batches:
-        cur_complexity = os.stat(data).st_size
+    for i in range(1,NUM_DIR+1):
+        data=DATA_DIR_BASE+'/'+str(i)+'/'
+        
+        if use_s3:
+            data = DATA_DIR_S3_BASE+str(i)+'/'
+
         if use_scheduler:
             if use_s3:
+                s3_object_use_name=s3_object_name+'/'+str(i)+'/'
+                cur_complexity = get_s3_size(s3_bucket_name,s3_object_use_name)
+                print(use_s3,s3_bucket_name,s3_object_use_name)
                 training_tasks.append(train_batch.remote(
                     working_dir=data,
                     complexity_score=cur_complexity,
                     server=server,
                     s3=use_s3,
                     bucket_name=s3_bucket_name,
-                    object_name=s3_object_name
+                    object_key=s3_object_use_name
                 ))
             else:
                 training_tasks.append(train_batch.remote(
