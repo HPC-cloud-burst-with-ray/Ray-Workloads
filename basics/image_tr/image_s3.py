@@ -11,7 +11,9 @@ import ray
 import torch
 import boto3
 from torchvision import transforms as T
-
+from boto3.s3.transfer import TransferConfig
+Image.MAX_IMAGE_PIXELS = None
+MAX_BANDWIDTH_HPC=94371840
 use_scheduler = False
 use_s3=False
 s3_bucket_name=''
@@ -24,6 +26,19 @@ s3_object_name=''
 #     else:
 #         print(f"Unknown mode: {mode}. Exiting")
 #         sys.exit(1)
+# if len(sys.argv) > 1:
+#     mode = sys.argv[1]
+#     if len(sys.argv) == 4:
+#         s3_bucket_name = sys.argv[2]
+#         s3_object_name = sys.argv[3]
+#         use_s3 = True
+#     if mode == "sched":
+#         use_scheduler = True
+#         print("Using scheduler")
+#     else:
+#         print(f"Unknown mode: {mode}. Exiting")
+#         sys.exit(1)
+
 if len(sys.argv) > 1:
     mode = sys.argv[1]
     if len(sys.argv) == 4:
@@ -32,6 +47,9 @@ if len(sys.argv) > 1:
         use_s3 = True
     if mode == "sched":
         use_scheduler = True
+        print("Using scheduler")
+    elif mode=="manu":
+        use_scheduler = False
         print("Using scheduler")
     else:
         print(f"Unknown mode: {mode}. Exiting")
@@ -48,6 +66,30 @@ image_list = glob.glob(DATA_DIR+"/*.jpg")
 NODE_USER_NAME = "ec2-user"
 DATA_IP= "10.0.0.132"
 
+
+def download_s3_folder(bucket_name, s3_folder='', local_dir=None,node_type=1):
+    
+    bandwidth = {'0': None, '1': MAX_BANDWIDTH_HPC, '2': None}
+    band_width=bandwidth[node_type]
+    config=TransferConfig( max_bandwidth=band_width)
+    s3=boto3.resource('s3')
+    bucket = s3.Bucket(bucket_name)
+    for obj in bucket.objects.filter(Prefix=s3_folder):
+        
+        if local_dir is None:
+            target = obj.key
+        elif local_dir[-1]=="/":
+            target=os.path.join(local_dir, os.path.relpath(obj.key, s3_folder))
+        else:
+            target=local_dir
+
+        if '/' in target:
+            if not os.path.exists(os.path.dirname(target)):
+                os.makedirs(os.path.dirname(target))
+            
+        if obj.key[-1] == '/':
+            continue
+        bucket.download_file(obj.key, target,Config=config)
         
 def get_s3_size(bucket_name,object_key):
     # Initialize the S3 client
@@ -109,14 +151,15 @@ def transform_image(img: object, fetch_image=True, verbose=False):
 
 
 # Define a Ray task to transform, augment and do some compute intensive tasks on an image
-@ray.remote(num_cpus=14)
+@ray.remote(num_cpus=15)
 def augment_image_distributed(working_dir, complexity_score, fetch_image,s3=False, bucket_name="", object_key=""):
+    Image.MAX_IMAGE_PIXELS = None
     img = Image.open(working_dir)
     return transform_image(img, fetch_image=fetch_image)
 
-@ray.remote(num_cpus=14)
-def augment_image_distributed_manual(image, complexity_score, fetch_image):
-    
+@ray.remote(num_cpus=15)
+def augment_image_distributed_manual(image, complexity_score, fetch_image, bucket_name="", object_key=""):
+    Image.MAX_IMAGE_PIXELS = None
     if not os.path.exists(image):
         # remote = True
         # time.sleep(complexity_score / 100000)
@@ -129,7 +172,11 @@ def augment_image_distributed_manual(image, complexity_score, fetch_image):
         #     # remove the file
         #     os.system(f"rm {image}")
         #     repeat_times -= 1
-        os.system(f"rsync --mkpath -a {NODE_USER_NAME}@{DATA_IP}:{image} {image}")
+        if bucket_name!="" and object_key!="":
+            node_type=os.getenv('LOCAL_NODE_TYPE')
+            download_s3_folder(bucket_name,object_key,image,node_type)
+        else:
+            os.system(f"rsync --mkpath -a {NODE_USER_NAME}@{DATA_IP}:{image} {image}")
     img = Image.open(image)
     return transform_image(img, fetch_image=fetch_image)
 
@@ -191,14 +238,25 @@ for img in image_list:
             fetch_image=False
             ))
     else:
-        
+        if use_s3==True:
+            s3_object_path=s3_object_name+"/"+img_name
+            working_dir_path= os.getcwd() + "/task_images_s3/"+img_name
             
-        obj_refs.append(augment_image_distributed_manual.remote(
+            cur_complexity=get_s3_size(s3_bucket_name,s3_object_path)
+            obj_refs.append(augment_image_distributed_manual.remote(
+            working_dir_path,
+            cur_complexity, 
+            False,
+            bucket_name=s3_bucket_name,
+            object_key=s3_object_path
+            ))
+        else:   
+            obj_refs.append(augment_image_distributed_manual.remote(
             img,
             cur_complexity, 
             False
-        ))
-
+            ))
+print(use_s3,use_scheduler)
 distributed_results = ray.get(obj_refs)
 
 end = time.perf_counter()
