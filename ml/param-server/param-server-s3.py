@@ -13,6 +13,7 @@ from const import *
 import ray
 import sys
 import boto3
+from boto3.s3.transfer import TransferConfig
 
 from ray.util.scheduling_strategies import (
     In,
@@ -40,11 +41,14 @@ if len(sys.argv) > 1:
     if mode == "sched":
         use_scheduler = True
         print("Using scheduler")
+    elif mode=="manu":
+        use_scheduler = False
+        print("Using scheduler")
     else:
         print(f"Unknown mode: {mode}. Exiting")
         sys.exit(1)
 
-
+print("parameter:   ",s3_bucket_name ,s3_object_name, use_scheduler ,use_s3)
 class Mydataset(torch.utils.data.Dataset):
     def __init__(self, root, annotation, transforms=None):
         self.root = root
@@ -263,7 +267,32 @@ def train_batch(working_dir, complexity_score, server, s3=False, bucket_name="",
 
         print("A batch of training is done.")
 
+def download_s3_folder(bucket_name, s3_folder='', local_dir=None,node_type=1):
+    
+    bandwidth = {'0': None, '1': MAX_BANDWIDTH_HPC, '2': None}
+    band_width=bandwidth[node_type]
+    config=TransferConfig( max_bandwidth=band_width)
+    s3=boto3.resource('s3')
+    bucket = s3.Bucket(bucket_name)
+    for obj in bucket.objects.filter(Prefix=s3_folder):
+        
+        if local_dir is None:
+            target = obj.key
+        elif local_dir[-1]=="/":
+            target=os.path.join(local_dir, os.path.relpath(obj.key, s3_folder))
+        else:
+            target=local_dir
 
+        if '/' in target:
+            if not os.path.exists(os.path.dirname(target)):
+                os.makedirs(os.path.dirname(target))
+            
+        if obj.key[-1] == '/':
+            continue
+        bucket.download_file(obj.key, target,Config=config)
+        
+        
+        
 # @ray.remote(num_cpus=14)
 # def train_batch_manual(working_dir, complexity_score, server):
 #     if not os.path.exists(working_dir):
@@ -314,12 +343,15 @@ def train_batch(working_dir, complexity_score, server, s3=False, bucket_name="",
 #     print("A batch of training is done.")
 
 @ray.remote(num_cpus=14)
-def train_batch_manual(working_dir, complexity_score, server):
+def train_batch_manual(working_dir, complexity_score, server,bucket_name="",object_key=""):
     if not os.path.exists(working_dir):
         remote = True
         # time.sleep(complexity_score / 100000)
-        os.system(f"rsync --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
-
+        if use_s3==False:
+            os.system(f"rsync --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
+        else:
+            node_type=os.getenv('LOCAL_NODE_TYPE')
+            download_s3_folder(bucket_name,object_key,working_dir,node_type)
     my_model = MODEL
 
     num_batch_in_dir = NUM_BATCHES_IN_DIR
@@ -425,7 +457,7 @@ if __name__ == "__main__":
     start_time = time.time()
 
     for i in range(1,NUM_DIR+1):
-        data=DATA_DIR_BASE+'/'+str(i)+'/'
+        
         
         if use_s3:
             data = DATA_DIR_S3_BASE+str(i)+'/'
@@ -444,17 +476,34 @@ if __name__ == "__main__":
                     object_key=s3_object_use_name
                 ))
             else:
+                data=DATA_DIR_BASE+str(i)+'/'
+                cur_complexity = os.stat(data).st_size
                 training_tasks.append(train_batch.remote(
                     working_dir=data,
                     complexity_score=cur_complexity,
                     server=server
+                   
                 ))
         else:
-            training_tasks.append(train_batch_manual.remote(
-                data,
-                cur_complexity,
-                server
-            ))
+            if use_s3:
+                s3_object_use_name=s3_object_name+'/'+str(i)+'/'
+                cur_complexity = get_s3_size(s3_bucket_name,s3_object_use_name)
+
+                training_tasks.append(train_batch_manual.remote(
+                    data,
+                    cur_complexity,
+                    server,
+                    bucket_name=s3_bucket_name,
+                    object_key=s3_object_use_name
+                ))
+            else:
+                data=DATA_DIR_BASE+str(i)+'/'
+                cur_complexity = os.stat(data).st_size
+                training_tasks.append(train_batch_manual.remote(
+                    data,
+                    cur_complexity,
+                    server
+                ))
     
     ray.get(training_tasks)
 
