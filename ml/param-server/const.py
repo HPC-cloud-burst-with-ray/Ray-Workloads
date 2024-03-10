@@ -12,7 +12,13 @@ BATCH_SIZE = NUM_IMG_IN_DIR // NUM_BATCHES_IN_DIR
 
 
 NODE_USER_NAME = "ec2-user"
-DATA_IP= "10.0.0.132"
+# DATA_IP= "10.0.0.54"
+# DATA_IP is env variable HEAD_NODE_IP
+DATA_IP = os.environ.get("HEAD_NODE_IP", None)
+if DATA_IP is None:
+    print("No IP found for data node. Exiting")
+    sys.exit(1)
+
 DATA_DIR_BASE = os.getcwd() + "/dataset_batch/"
 DATA_DIR = os.getcwd() + "/dataset_batch/*/"
 

@@ -64,7 +64,13 @@ DISTRIBUTED_BATCH_TIMES = []
 THUMB_SIZE = (64, 64)
 image_list = glob.glob(DATA_DIR+"/*.jpg")
 NODE_USER_NAME = "ec2-user"
-DATA_IP= "10.0.0.132"
+# DATA_IP= "10.0.0.54"
+# DATA_IP is env variable HEAD_NODE_IP
+DATA_IP = os.environ.get("HEAD_NODE_IP", None)
+if DATA_IP is None:
+    print("No IP found for data node. Exiting")
+    sys.exit(1)
+
 
 
 def download_s3_folder(bucket_name, s3_folder='', local_dir=None,node_type=1):
