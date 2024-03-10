@@ -3,8 +3,13 @@ import os
 import requests
 from PIL import Image
 
+SCALE_IMG_M = 2
+SCALE_IMG_N = 2
+
+NUM_URLS_FETCH = 50
+
 DATA_DIR = Path(os.getcwd() + "/task_images")
-URLS = [
+URLS_ALL = [
     "https://images.pexels.com/photos/305821/pexels-photo-305821.jpeg",
     "https://images.pexels.com/photos/509922/pexels-photo-509922.jpeg",
     "https://images.pexels.com/photos/325812/pexels-photo-325812.jpeg",
@@ -35,78 +40,80 @@ URLS = [
     "https://images.pexels.com/photos/3685175/pexels-photo-3685175.jpeg",
     "https://images.pexels.com/photos/2885578/pexels-photo-2885578.jpeg",
     "https://images.pexels.com/photos/3530116/pexels-photo-3530116.jpeg",
-    # "https://images.pexels.com/photos/9668911/pexels-photo-9668911.jpeg",
-    # "https://images.pexels.com/photos/14704971/pexels-photo-14704971.jpeg",
-    # "https://images.pexels.com/photos/13865510/pexels-photo-13865510.jpeg",
-    # "https://images.pexels.com/photos/6607387/pexels-photo-6607387.jpeg",
-    # "https://images.pexels.com/photos/13716813/pexels-photo-13716813.jpeg",
-    # "https://images.pexels.com/photos/14690500/pexels-photo-14690500.jpeg",
-    # "https://images.pexels.com/photos/14690501/pexels-photo-14690501.jpeg",
-    # "https://images.pexels.com/photos/14615366/pexels-photo-14615366.jpeg",
-    # "https://images.pexels.com/photos/14344696/pexels-photo-14344696.jpeg",
-    # "https://images.pexels.com/photos/14661919/pexels-photo-14661919.jpeg",
-    # "https://images.pexels.com/photos/5977791/pexels-photo-5977791.jpeg",
-    # "https://images.pexels.com/photos/5211747/pexels-photo-5211747.jpeg",
-    # "https://images.pexels.com/photos/5995657/pexels-photo-5995657.jpeg",
-    # "https://images.pexels.com/photos/8574183/pexels-photo-8574183.jpeg",
-    # "https://images.pexels.com/photos/14690503/pexels-photo-14690503.jpeg",
-    # "https://images.pexels.com/photos/2100941/pexels-photo-2100941.jpeg",
-    # "https://images.pexels.com/photos/210019/pexels-photo-210019.jpeg",
-    # "https://images.pexels.com/photos/112460/pexels-photo-112460.jpeg",
-    # "https://images.pexels.com/photos/116675/pexels-photo-116675.jpeg",
-    # "https://images.pexels.com/photos/3586966/pexels-photo-3586966.jpeg",
-    # "https://images.pexels.com/photos/313782/pexels-photo-313782.jpeg",
-    # "https://live.staticflickr.com/2443/3984080835_71b0426844_b.jpg",
-    # "https://www.aero.jaxa.jp/eng/facilities/aeroengine/images/th_aeroengine05.jpg",
-    # "https://images.pexels.com/photos/370717/pexels-photo-370717.jpeg",
-    # "https://images.pexels.com/photos/1323550/pexels-photo-1323550.jpeg",
-    # "https://images.pexels.com/photos/11374974/pexels-photo-11374974.jpeg",
-    # "https://images.pexels.com/photos/408951/pexels-photo-408951.jpeg",
-    # "https://images.pexels.com/photos/3889870/pexels-photo-3889870.jpeg",
-    # "https://images.pexels.com/photos/1774389/pexels-photo-1774389.jpeg",
-    # "https://images.pexels.com/photos/3889854/pexels-photo-3889854.jpeg",
-    # "https://images.pexels.com/photos/2196578/pexels-photo-2196578.jpeg",
-    # "https://images.pexels.com/photos/2885320/pexels-photo-2885320.jpeg",
-    # "https://images.pexels.com/photos/7189303/pexels-photo-7189303.jpeg",
-    # "https://images.pexels.com/photos/9697598/pexels-photo-9697598.jpeg",
-    # "https://images.pexels.com/photos/6431298/pexels-photo-6431298.jpeg",
-    # "https://images.pexels.com/photos/7131157/pexels-photo-7131157.jpeg",
-    # "https://images.pexels.com/photos/4840134/pexels-photo-4840134.jpeg",
-    # "https://images.pexels.com/photos/5359974/pexels-photo-5359974.jpeg",
-    # "https://images.pexels.com/photos/3889854/pexels-photo-3889854.jpeg",
-    # "https://images.pexels.com/photos/1753272/pexels-photo-1753272.jpeg",
-    # "https://images.pexels.com/photos/2328863/pexels-photo-2328863.jpeg",
-    # "https://images.pexels.com/photos/6102161/pexels-photo-6102161.jpeg",
-    # "https://images.pexels.com/photos/6101986/pexels-photo-6101986.jpeg",
-    # "https://images.pexels.com/photos/3334492/pexels-photo-3334492.jpeg",
-    # "https://images.pexels.com/photos/5708915/pexels-photo-5708915.jpeg",
-    # "https://images.pexels.com/photos/5708913/pexels-photo-5708913.jpeg",
-    # "https://images.pexels.com/photos/6102436/pexels-photo-6102436.jpeg",
-    # "https://images.pexels.com/photos/6102144/pexels-photo-6102144.jpeg",
-    # "https://images.pexels.com/photos/6102003/pexels-photo-6102003.jpeg",
-    # "https://images.pexels.com/photos/6194087/pexels-photo-6194087.jpeg",
-    # "https://images.pexels.com/photos/5847900/pexels-photo-5847900.jpeg",
-    # "https://images.pexels.com/photos/1671479/pexels-photo-1671479.jpeg",
-    # "https://images.pexels.com/photos/3335507/pexels-photo-3335507.jpeg",
-    # "https://images.pexels.com/photos/6102522/pexels-photo-6102522.jpeg",
-    # "https://images.pexels.com/photos/6211095/pexels-photo-6211095.jpeg",
-    # "https://images.pexels.com/photos/720347/pexels-photo-720347.jpeg",
-    # "https://images.pexels.com/photos/3516015/pexels-photo-3516015.jpeg",
-    # "https://images.pexels.com/photos/3325717/pexels-photo-3325717.jpeg",
-    # "https://images.pexels.com/photos/849835/pexels-photo-849835.jpeg",
-    # "https://images.pexels.com/photos/302743/pexels-photo-302743.jpeg",
-    # "https://images.pexels.com/photos/167699/pexels-photo-167699.jpeg",
-    # "https://images.pexels.com/photos/259620/pexels-photo-259620.jpeg",
-    # "https://images.pexels.com/photos/300857/pexels-photo-300857.jpeg",
-    # "https://images.pexels.com/photos/789380/pexels-photo-789380.jpeg",
-    # "https://images.pexels.com/photos/735987/pexels-photo-735987.jpeg",
-    # "https://images.pexels.com/photos/572897/pexels-photo-572897.jpeg",
-    # "https://images.pexels.com/photos/300857/pexels-photo-300857.jpeg",
-    # "https://images.pexels.com/photos/760971/pexels-photo-760971.jpeg",
-    # "https://images.pexels.com/photos/789382/pexels-photo-789382.jpeg",
-    # "https://images.pexels.com/photos/33041/antelope-canyon-lower-canyon-arizona.jpg",
-    # "https://images.pexels.com/photos/1004665/pexels-photo-1004665.jpeg",
+    "https://images.pexels.com/photos/9668911/pexels-photo-9668911.jpeg",
+    "https://images.pexels.com/photos/14704971/pexels-photo-14704971.jpeg",
+    "https://images.pexels.com/photos/13865510/pexels-photo-13865510.jpeg",
+    "https://images.pexels.com/photos/6607387/pexels-photo-6607387.jpeg",
+    "https://images.pexels.com/photos/13716813/pexels-photo-13716813.jpeg",
+    "https://images.pexels.com/photos/14690500/pexels-photo-14690500.jpeg",
+    "https://images.pexels.com/photos/14690501/pexels-photo-14690501.jpeg",
+    "https://images.pexels.com/photos/14615366/pexels-photo-14615366.jpeg",
+    "https://images.pexels.com/photos/14344696/pexels-photo-14344696.jpeg",
+    "https://images.pexels.com/photos/14661919/pexels-photo-14661919.jpeg",
+    "https://images.pexels.com/photos/5977791/pexels-photo-5977791.jpeg",
+    "https://images.pexels.com/photos/5211747/pexels-photo-5211747.jpeg",
+    "https://images.pexels.com/photos/5995657/pexels-photo-5995657.jpeg",
+    "https://images.pexels.com/photos/8574183/pexels-photo-8574183.jpeg",
+    "https://images.pexels.com/photos/14690503/pexels-photo-14690503.jpeg",
+    "https://images.pexels.com/photos/2100941/pexels-photo-2100941.jpeg",
+    "https://images.pexels.com/photos/210019/pexels-photo-210019.jpeg",
+    "https://images.pexels.com/photos/112460/pexels-photo-112460.jpeg",
+    "https://images.pexels.com/photos/116675/pexels-photo-116675.jpeg",
+    "https://images.pexels.com/photos/3586966/pexels-photo-3586966.jpeg",
+    "https://images.pexels.com/photos/313782/pexels-photo-313782.jpeg",
+    "https://live.staticflickr.com/2443/3984080835_71b0426844_b.jpg",
+    "https://www.aero.jaxa.jp/eng/facilities/aeroengine/images/th_aeroengine05.jpg",
+    "https://images.pexels.com/photos/370717/pexels-photo-370717.jpeg",
+    "https://images.pexels.com/photos/1323550/pexels-photo-1323550.jpeg",
+    "https://images.pexels.com/photos/11374974/pexels-photo-11374974.jpeg",
+    "https://images.pexels.com/photos/408951/pexels-photo-408951.jpeg",
+    "https://images.pexels.com/photos/3889870/pexels-photo-3889870.jpeg",
+    "https://images.pexels.com/photos/1774389/pexels-photo-1774389.jpeg",
+    "https://images.pexels.com/photos/3889854/pexels-photo-3889854.jpeg",
+    "https://images.pexels.com/photos/2196578/pexels-photo-2196578.jpeg",
+    "https://images.pexels.com/photos/2885320/pexels-photo-2885320.jpeg",
+    "https://images.pexels.com/photos/7189303/pexels-photo-7189303.jpeg",
+    "https://images.pexels.com/photos/9697598/pexels-photo-9697598.jpeg",
+    "https://images.pexels.com/photos/6431298/pexels-photo-6431298.jpeg",
+    "https://images.pexels.com/photos/7131157/pexels-photo-7131157.jpeg",
+    "https://images.pexels.com/photos/4840134/pexels-photo-4840134.jpeg",
+    "https://images.pexels.com/photos/5359974/pexels-photo-5359974.jpeg",
+    "https://images.pexels.com/photos/3889854/pexels-photo-3889854.jpeg",
+    "https://images.pexels.com/photos/1753272/pexels-photo-1753272.jpeg",
+    "https://images.pexels.com/photos/2328863/pexels-photo-2328863.jpeg",
+    "https://images.pexels.com/photos/6102161/pexels-photo-6102161.jpeg",
+    "https://images.pexels.com/photos/6101986/pexels-photo-6101986.jpeg",
+    "https://images.pexels.com/photos/3334492/pexels-photo-3334492.jpeg",
+    "https://images.pexels.com/photos/5708915/pexels-photo-5708915.jpeg",
+    "https://images.pexels.com/photos/5708913/pexels-photo-5708913.jpeg",
+    "https://images.pexels.com/photos/6102436/pexels-photo-6102436.jpeg",
+    "https://images.pexels.com/photos/6102144/pexels-photo-6102144.jpeg",
+    "https://images.pexels.com/photos/6102003/pexels-photo-6102003.jpeg",
+    "https://images.pexels.com/photos/6194087/pexels-photo-6194087.jpeg",
+    "https://images.pexels.com/photos/5847900/pexels-photo-5847900.jpeg",
+    "https://images.pexels.com/photos/1671479/pexels-photo-1671479.jpeg",
+    "https://images.pexels.com/photos/3335507/pexels-photo-3335507.jpeg",
+    "https://images.pexels.com/photos/6102522/pexels-photo-6102522.jpeg",
+    "https://images.pexels.com/photos/6211095/pexels-photo-6211095.jpeg",
+    "https://images.pexels.com/photos/720347/pexels-photo-720347.jpeg",
+    "https://images.pexels.com/photos/3516015/pexels-photo-3516015.jpeg",
+    "https://images.pexels.com/photos/3325717/pexels-photo-3325717.jpeg",
+    "https://images.pexels.com/photos/849835/pexels-photo-849835.jpeg",
+    "https://images.pexels.com/photos/302743/pexels-photo-302743.jpeg",
+    "https://images.pexels.com/photos/167699/pexels-photo-167699.jpeg",
+    "https://images.pexels.com/photos/259620/pexels-photo-259620.jpeg",
+    "https://images.pexels.com/photos/300857/pexels-photo-300857.jpeg",
+    "https://images.pexels.com/photos/789380/pexels-photo-789380.jpeg",
+    "https://images.pexels.com/photos/735987/pexels-photo-735987.jpeg",
+    "https://images.pexels.com/photos/572897/pexels-photo-572897.jpeg",
+    "https://images.pexels.com/photos/300857/pexels-photo-300857.jpeg",
+    "https://images.pexels.com/photos/760971/pexels-photo-760971.jpeg",
+    "https://images.pexels.com/photos/789382/pexels-photo-789382.jpeg",
+    "https://images.pexels.com/photos/33041/antelope-canyon-lower-canyon-arizona.jpg",
+    "https://images.pexels.com/photos/1004665/pexels-photo-1004665.jpeg",
 ]
+
+URLS = URLS_ALL[:NUM_URLS_FETCH]
 
 
 def download_images(url: str, data_dir: str) -> None:
@@ -145,14 +152,16 @@ def download_and_expand_image(url: str, data_dir: str) -> None:
     # Get the original image size
     original_size = image.size
 
+    # stress test the system by having huge images to increase workload
+    # scale up the image by 4 times
     # Calculate the new size (4 times the original size)
-    new_size = (original_size[0] * 2, original_size[1] * 4)
+    new_size = (original_size[0] * SCALE_IMG_M, original_size[1] * SCALE_IMG_N)
 
     # Expand the image to the new size
     expanded_image = image.resize(new_size)
 
     # Save the expanded image
-    expanded_image.save(img_name + "_2x.jpg")
+    expanded_image.save(img_name + f"_{SCALE_IMG_M * SCALE_IMG_N}x.jpg")
 
     # Remove the original image
     os.remove(img_name + ".jpg")

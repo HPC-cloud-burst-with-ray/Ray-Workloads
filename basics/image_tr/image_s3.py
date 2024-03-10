@@ -139,7 +139,7 @@ def transform_image(img: object, fetch_image=True, verbose=False):
 
     # compute intensive operations on tensors
     random.seed(42)
-    for _ in range(30):
+    for _ in range(3):
         tensor.pow(3).sum()
         t_tensor.pow(3).sum()
         torch.mul(tensor, random.randint(2, 10))
