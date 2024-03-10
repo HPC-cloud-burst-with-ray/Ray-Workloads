@@ -260,7 +260,7 @@ def train_batch(working_dir, complexity_score, server):
 #     if not os.path.exists(working_dir):
 #         remote = True
 #         # time.sleep(complexity_score / 100000)
-#         os.system(f"rsync --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
+#         os.system(f"rsync -e 'ssh -o StrictHostKeyChecking=no' --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
     
 #     my_model = MODEL
     
@@ -309,7 +309,7 @@ def train_batch_manual(working_dir, complexity_score, server):
     if not os.path.exists(working_dir):
         remote = True
         # time.sleep(complexity_score / 100000)
-        os.system(f"rsync --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
+        os.system(f"rsync -e 'ssh -o StrictHostKeyChecking=no' --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
 
     my_model = MODEL
 

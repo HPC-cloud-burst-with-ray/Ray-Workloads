@@ -84,16 +84,8 @@ def augment_image_distributed_manual(image, complexity_score, fetch_image):
     if not os.path.exists(image):
         # remote = True
         # time.sleep(complexity_score / 100000)
-        # os.system("rsync --mkpath -a ubuntu@172.31.40.126:%s %s" %(image, image))
 
-        # use repeated rsync to simulate a huge image file
-        # repeat_times = 9
-        # while repeat_times > 0:
-        #     os.system(f"rsync --mkpath -a {NODE_USER_NAME}@{DATA_IP}:{image} {image}")
-        #     # remove the file
-        #     os.system(f"rm {image}")
-        #     repeat_times -= 1
-        os.system(f"rsync --mkpath -a {NODE_USER_NAME}@{DATA_IP}:{image} {image}")
+        os.system(f"rsync -e 'ssh -o StrictHostKeyChecking=no' --mkpath -a {NODE_USER_NAME}@{DATA_IP}:{image} {image}")
     img = Image.open(image)
     return transform_image(img, fetch_image=fetch_image)
 

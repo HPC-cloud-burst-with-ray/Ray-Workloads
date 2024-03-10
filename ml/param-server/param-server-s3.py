@@ -298,7 +298,7 @@ def download_s3_folder(bucket_name, s3_folder='', local_dir=None,node_type=1):
 #     if not os.path.exists(working_dir):
 #         remote = True
 #         # time.sleep(complexity_score / 100000)
-#         os.system(f"rsync --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
+#         os.system(f"rsync -e 'ssh -o StrictHostKeyChecking=no' --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
     
 #     my_model = MODEL
     
@@ -348,7 +348,7 @@ def train_batch_manual(working_dir, complexity_score, server,bucket_name="",obje
         remote = True
         # time.sleep(complexity_score / 100000)
         if use_s3==False:
-            os.system(f"rsync --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
+            os.system(f"rsync -e 'ssh -o StrictHostKeyChecking=no' --mkpath -r -a {NODE_USER_NAME}@{DATA_IP}:{working_dir} {working_dir}")
         else:
             node_type=os.getenv('LOCAL_NODE_TYPE')
             download_s3_folder(bucket_name,object_key,working_dir,node_type)

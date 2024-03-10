@@ -165,18 +165,11 @@ def augment_image_distributed_manual(image, complexity_score, fetch_image, bucke
         # time.sleep(complexity_score / 100000)
         # os.system("rsync --mkpath -a ubuntu@172.31.40.126:%s %s" %(image, image))
 
-        # use repeated rsync to simulate a huge image file
-        # repeat_times = 9
-        # while repeat_times > 0:
-        #     os.system(f"rsync --mkpath -a {NODE_USER_NAME}@{DATA_IP}:{image} {image}")
-        #     # remove the file
-        #     os.system(f"rm {image}")
-        #     repeat_times -= 1
         if bucket_name!="" and object_key!="":
             node_type=os.getenv('LOCAL_NODE_TYPE')
             download_s3_folder(bucket_name,object_key,image,node_type)
         else:
-            os.system(f"rsync --mkpath -a {NODE_USER_NAME}@{DATA_IP}:{image} {image}")
+            os.system(f"rsync -e 'ssh -o StrictHostKeyChecking=no' --mkpath -a {NODE_USER_NAME}@{DATA_IP}:{image} {image}")
     img = Image.open(image)
     return transform_image(img, fetch_image=fetch_image)
 
