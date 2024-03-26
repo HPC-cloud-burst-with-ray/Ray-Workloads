@@ -1,14 +1,13 @@
-from pathlib import Path
+# from pathlib import Path
 import os
 import requests
 from PIL import Image
 
-SCALE_IMG_M = 2
-SCALE_IMG_N = 2
+SCALE_IMG_M = 10
+SCALE_IMG_N = 10
 
-NUM_URLS_FETCH = 50
-
-DATA_DIR = Path(os.getcwd() + "/task_images")
+# NUM_URLS_FETCH = 30
+DATA_DIR = os.getcwd() + "/task_images"
 URLS_ALL = [
     "https://images.pexels.com/photos/305821/pexels-photo-305821.jpeg",
     "https://images.pexels.com/photos/509922/pexels-photo-509922.jpeg",
@@ -112,8 +111,9 @@ URLS_ALL = [
     "https://images.pexels.com/photos/33041/antelope-canyon-lower-canyon-arizona.jpg",
     "https://images.pexels.com/photos/1004665/pexels-photo-1004665.jpeg",
 ]
-
-URLS = URLS_ALL[:NUM_URLS_FETCH]
+URL_TO_USE = ["https://images.pexels.com/photos/13865510/pexels-photo-13865510.jpeg"]
+NUM_IMAGES = 3
+# URLS = URLS_ALL[:NUM_URLS_FETCH]
 
 
 def download_images(url: str, data_dir: str) -> None:
@@ -128,9 +128,6 @@ def download_images(url: str, data_dir: str) -> None:
     # for i in range(2):
     #     with open(f"{img_name}-copy{i}.jpg", "wb+") as f:
     #         f.write(img_data)
-
-
-
 
 
 def download_and_expand_image(url: str, data_dir: str) -> None:
@@ -161,16 +158,17 @@ def download_and_expand_image(url: str, data_dir: str) -> None:
     expanded_image = image.resize(new_size)
 
     # Save the expanded image
-    expanded_image.save(img_name + f"_{SCALE_IMG_M * SCALE_IMG_N}x.jpg")
+    for i in range(NUM_IMAGES):
+        expanded_image.save(f"{data_dir}/{i}.jpg")
+    # expanded_image.save(img_name + f"_{SCALE_IMG_M * SCALE_IMG_N}x.jpg")
 
     # Remove the original image
     os.remove(img_name + ".jpg")
 
+if os.path.exists(DATA_DIR):
+    os.system("rm -rf " + DATA_DIR)
 
-
-
-if not os.path.exists(DATA_DIR):
-    os.mkdir(DATA_DIR)
-    print(f"downloading images ...")
-    for url in URLS:
-        download_and_expand_image(url, DATA_DIR)
+os.mkdir(DATA_DIR)
+print(f"downloading images ...")
+for url in URL_TO_USE:
+    download_and_expand_image(url, DATA_DIR)
